@@ -1,7 +1,7 @@
 /* eslint-env node  */
 /* global requirejs */
 
-module.exports = function () {
+module.exports = function (wallaby) {
 
 
   var path = require('path');
@@ -14,7 +14,7 @@ module.exports = function () {
     files: [
       { pattern: 'node_modules/bluebird/js/browser/bluebird.core.js', instrument: false },
       { pattern: 'node_modules/requirejs/require.js', instrument: false },
-      { pattern: 'src/**/*.ts', load: false },
+      { pattern: 'src/**/*.+(ts|html)', load: false },
       { pattern: 'test/unit/setup.ts', load: false }
     ],
 
@@ -27,17 +27,15 @@ module.exports = function () {
     },
 
     middleware: function (app, express) {
-      app.use('/node_modules',
-        express.static(path.join(__dirname, 'node_modules')));
+      app.use('/node_modules', express.static(path.join(__dirname, 'node_modules')));
+      app.use('/', express.static(path.join(wallaby.projectCacheDir, 'src')));
     },
 
     setup: (function (wallaby) {
       wallaby.delayStart();
 
       requirejs.config({
-        packages: [
-          // packages
-        ]
+        packages: []
       });
 
       require(['/test/unit/setup.js'].concat(wallaby.tests), function () {
@@ -45,7 +43,7 @@ module.exports = function () {
       });
     }).toString()
       .replace(
-        '// packages',
+        'packages: []',
         aureliaJson.build.bundles[1].dependencies.reduce(function (prev, curr) {
           var moduleName, modulePath, moduleMain;
           if (curr.path) {
@@ -60,13 +58,19 @@ module.exports = function () {
           }
           else {
             moduleName = moduleMain = curr;
-            modulePath = 'node_modules/' + moduleName + '/dist/amd';
+            var packageJson = require(moduleName + '/package.json');
+            if (packageJson.jspm && packageJson.jspm.format === 'amd') {
+              modulePath = 'node_modules/' + moduleName + '/' + packageJson.jspm.directories.dist;
+            } else {
+              modulePath = 'node_modules/' + moduleName;
+              moduleMain = packageJson.main;
+            }
           }
           return prev
             + '{ name: ' + JSON.stringify(moduleName)
             + ', location: ' + JSON.stringify(modulePath)
             + ', main: ' + JSON.stringify(moduleMain)
             + '},';
-        }, ''))
+        }, 'packages: [') + ']')
   };
 };
